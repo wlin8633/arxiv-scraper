@@ -1,0 +1,37 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Local configuration and operational state
+config.toml
+state/
+*.db
+*.db-shm
+*.db-wal
+*.lock
+*.log
+
+# Downloaded or generated library content
+*.pdf
+*.part
+*.jsonl
+daily/
+metadata/
+papers/
+
+# Credentials and cloud-client configuration
+.env
+.env.*
+rclone.conf
+credentials*.json
+client_secret*.json
+token*.json
+*.pem
+*.key
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

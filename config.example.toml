@@ -1,0 +1,111 @@
+[general]
+output_root = "~/gdrive/ArXiv Papers"
+mount_root = "~/gdrive"
+require_mount = true
+state_dir = "~/.local/state/arxiv-scraper"
+timezone = "Asia/Taipei"
+index_threshold = 2.0
+download_threshold = 7.0
+request_interval_seconds = 3.0
+request_timeout_seconds = 60.0
+request_retries = 3
+user_agent = "personal-research-arxiv-scraper/0.1 (mailto:you@example.com)"
+
+[sources]
+categories = [
+  "physics.plasm-ph",
+  "physics.acc-ph",
+  "physics.ins-det",
+  "physics.comp-ph",
+  "physics.optics",
+  "nucl-ex",
+]
+
+[category_weights]
+"physics.plasm-ph" = 1.5
+"physics.acc-ph" = 1.0
+"physics.ins-det" = 1.0
+"physics.comp-ph" = 0.5
+"physics.optics" = 0.5
+"nucl-ex" = 0.5
+
+[[rules]]
+label = "laser-driven ion acceleration"
+pattern = 'laser[- ]driven\s+(?:proton|ion)'
+weight = 5.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "ion acceleration"
+pattern = '(?:proton|ion)\s+acceleration'
+weight = 3.5
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "proton-boron fusion"
+pattern = 'p\s*[-–]?\s*11\s*B|proton[- ]boron'
+weight = 6.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "high-energy-density plasma"
+pattern = 'high[- ]energy[- ]density|\bHEDP\b'
+weight = 3.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "particle-in-cell"
+pattern = 'particle[- ]in[- ]cell|\bWarpX\b'
+weight = 2.5
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "CR-39"
+pattern = '\bCR[- ]?39\b'
+weight = 5.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "Thomson parabola"
+pattern = 'Thomson\s+parabola'
+weight = 4.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "scintillator"
+pattern = 'scintillat'
+weight = 2.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "laser-plasma interaction"
+pattern = 'laser[- ]plasma|laser\s+plasma'
+weight = 2.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "intense laser"
+pattern = 'petawatt|ultra[- ]?intense|high[- ]intensity\s+laser'
+weight = 2.0
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "inertial fusion"
+pattern = 'inertial\s+(?:confinement\s+)?fusion'
+weight = 2.5
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "FLASH simulation"
+pattern = '\bFLASH\b'
+weight = 1.5
+fields = ["title", "abstract"]
+
+[[rules]]
+label = "plasma diagnostic"
+pattern = 'plasma\s+diagnostic|particle\s+diagnostic'
+weight = 1.0
+fields = ["title", "abstract"]
+
+[author_overrides]
+# "2610.12345" = "de_la_Cruz"

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title>Sample arXiv feed</title>
+  <entry>
+    <id>https://arxiv.org/abs/2610.12345v1</id>
+    <updated>2026-10-28T00:30:00Z</updated>
+    <published>2026-10-27T18:00:00Z</published>
+    <title>Laser-driven ion acceleration in a high-energy-density plasma</title>
+    <summary>arXiv:2610.12345v1 Announce Type: new Abstract: We study laser-plasma coupling and proton acceleration with particle-in-cell simulations.</summary>
+    <dc:creator>Alice Smith, Bo Chen</dc:creator>
+    <category term="physics.plasm-ph" />
+    <link href="https://arxiv.org/abs/2610.12345v1" />
+    <link title="pdf" type="application/pdf" href="https://arxiv.org/pdf/2610.12345v1" />
+  </entry>
+  <entry>
+    <id>https://arxiv.org/abs/2610.23456v1</id>
+    <updated>2026-10-28T01:00:00Z</updated>
+    <published>2026-10-27T19:00:00Z</published>
+    <title>A general study of plasma transport</title>
+    <summary>This work presents a broad transport model.</summary>
+    <author><name>Ben Lee</name></author>
+    <category term="physics.plasm-ph" />
+    <link rel="alternate" href="https://arxiv.org/abs/2610.23456v1" />
+  </entry>
+  <entry>
+    <id>https://arxiv.org/abs/2610.34567v1</id>
+    <updated>2026-10-28T01:30:00Z</updated>
+    <published>2026-10-27T20:00:00Z</published>
+    <title>CR-39 calibration for a Thomson parabola diagnostic</title>
+    <summary>We calibrate CR-39 response for laser-driven proton measurements.</summary>
+    <author><name>Ana de la Cruz</name></author>
+    <category term="physics.ins-det" />
+    <link rel="alternate" href="https://arxiv.org/abs/2610.34567v1" />
+    <link title="pdf" type="application/pdf" href="https://arxiv.org/pdf/2610.34567v1" />
+  </entry>
+</feed>

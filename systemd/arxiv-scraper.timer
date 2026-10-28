@@ -1,0 +1,11 @@
+[Unit]
+Description=Run arxiv-scraper each afternoon after the arXiv daily feed update
+
+[Timer]
+OnCalendar=*-*-* 14:15:00 Asia/Taipei
+Persistent=true
+RandomizedDelaySec=10min
+Unit=arxiv-scraper.service
+
+[Install]
+WantedBy=timers.target

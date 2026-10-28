@@ -1,0 +1,24 @@
+[Unit]
+Description=Daily arXiv paper discovery and cloud archive
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=2h
+StartLimitBurst=4
+
+[Service]
+Type=oneshot
+WorkingDirectory="@PROJECT_ROOT@"
+ExecStart=/usr/bin/python3 -m arxiv_scraper --config "@PROJECT_ROOT@/config.toml"
+Environment=PYTHONUNBUFFERED=1
+TimeoutStartSec=30min
+Restart=on-failure
+RestartSec=15min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths="@STATE_DIR@"
+ReadWritePaths="@OUTPUT_ROOT@"
+StandardOutput=journal
+StandardError=journal
