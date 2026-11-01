@@ -9,6 +9,9 @@ download_threshold = 7.0
 request_interval_seconds = 3.0
 request_timeout_seconds = 60.0
 request_retries = 3
+api_backfill_days = 7
+api_page_size = 100
+api_max_results_per_category = 500
 user_agent = "personal-research-arxiv-scraper/0.1 (mailto:you@example.com)"
 
 [sources]

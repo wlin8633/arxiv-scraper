@@ -105,6 +105,13 @@ class Database:
         )
         self.connection.commit()
 
+    def has_version(self, arxiv_id: str, version: int) -> bool:
+        row = self.connection.execute(
+            "SELECT 1 FROM versions WHERE arxiv_id = ? AND version = ?",
+            (arxiv_id, version),
+        ).fetchone()
+        return row is not None
+
     def assign_identity(self, paper: Paper, proposed_token: str, proposed_year: int) -> tuple[str, int]:
         row = self.connection.execute(
             "SELECT library_author_token, first_seen_year FROM papers WHERE arxiv_id = ?",

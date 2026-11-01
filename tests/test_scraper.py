@@ -6,9 +6,11 @@ import unittest
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from arxiv_scraper.config import Config, Rule
-from arxiv_scraper.feed import parse_atom
+from arxiv_scraper.feed import api_query_url, load_api_backfill, parse_atom
 from arxiv_scraper.models import Paper
 from arxiv_scraper.naming import author_token, suggested_filename
 from arxiv_scraper.pipeline import run_pipeline
@@ -75,6 +77,44 @@ class FeedAndNamingTests(unittest.TestCase):
         self.assertLess(low_score, config.index_threshold)
         self.assertTrue(any("laser-driven" in match for match in matches))
 
+    def test_api_query_uses_updated_date_window(self) -> None:
+        url = api_query_url(
+            "physics.plasm-ph",
+            date(2026, 10, 27),
+            date(2026, 11, 2),
+            start=100,
+            max_results=50,
+        )
+        query = parse_qs(urlparse(url).query)
+        self.assertEqual(query["start"], ["100"])
+        self.assertEqual(query["max_results"], ["50"])
+        self.assertEqual(query["sortBy"], ["lastUpdatedDate"])
+        self.assertIn(
+            "lastUpdatedDate:[202610270000 TO 202611022359]",
+            query["search_query"][0],
+        )
+
+    def test_api_backfill_deduplicates_cross_listed_versions(self) -> None:
+        class FixtureClient:
+            def __init__(self) -> None:
+                self.urls: list[str] = []
+
+            def read_bytes(self, url: str) -> bytes:
+                self.urls.append(url)
+                return FIXTURE.read_bytes()
+
+        client = FixtureClient()
+        papers = load_api_backfill(
+            client,
+            ("physics.plasm-ph", "physics.ins-det"),
+            date(2026, 10, 27),
+            date(2026, 11, 2),
+            page_size=100,
+            max_results_per_category=500,
+        )
+        self.assertEqual(len(papers), 3)
+        self.assertEqual(len(client.urls), 2)
+
 
 class PersistenceTests(unittest.TestCase):
     def test_unknown_token_is_repaired_once_author_is_available(self) -> None:
@@ -123,6 +163,30 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual((token1, year1), ("Smith", 2026))
         self.assertEqual((token2, year2), ("Smith", 2026))
 
+    def test_database_reports_known_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Database(Path(temporary) / "arxiv.db")
+            paper = Paper(
+                arxiv_id="2610.99998",
+                version=1,
+                title="Title",
+                abstract="Abstract",
+                authors=["Alice Smith"],
+                categories=["physics.plasm-ph"],
+                published="2026-10-27T18:00:00Z",
+                updated="2026-10-27T18:00:00Z",
+                abstract_url="https://arxiv.org/abs/2610.99998v1",
+                pdf_url="https://arxiv.org/pdf/2610.99998v1",
+            )
+            try:
+                self.assertFalse(database.has_version(paper.arxiv_id, 1))
+                database.assign_identity(paper, "Smith", 2026)
+                database.record_version(paper)
+                self.assertTrue(database.has_version(paper.arxiv_id, 1))
+                self.assertFalse(database.has_version(paper.arxiv_id, 2))
+            finally:
+                database.close()
+
     def test_offline_pipeline_and_manual_pdf_detection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -163,6 +227,69 @@ class PersistenceTests(unittest.TestCase):
             self.assertIn("PDF already present", rerun_index)
             self.assertIn("../../papers/2026/Smith_2026_arXiv-2610.12345v1.pdf", rerun_index)
             self.assertTrue(manual_pdf.with_suffix(".json").exists())
+
+    def test_api_backfill_processes_only_unknown_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = make_config(root)
+            existing = parse_atom(FIXTURE.read_bytes())[0]
+            run_pipeline(
+                config,
+                date(2026, 10, 28),
+                fixture=FIXTURE,
+                no_download=True,
+            )
+            new_paper = replace(
+                existing,
+                arxiv_id="2610.55555",
+                title="Laser-driven ion acceleration measured with CR-39",
+                abstract="CR-39 records laser-driven proton acceleration.",
+                abstract_url="https://arxiv.org/abs/2610.55555v1",
+                pdf_url="https://arxiv.org/pdf/2610.55555v1",
+            )
+
+            with patch("arxiv_scraper.pipeline.load_feed", return_value=[]), patch(
+                "arxiv_scraper.pipeline.load_api_backfill",
+                return_value=[existing, new_paper],
+            ):
+                result = run_pipeline(
+                    config,
+                    date(2026, 10, 29),
+                    no_download=True,
+                )
+
+            self.assertEqual(result.fetched, 1)
+            rows = [
+                json.loads(line)
+                for line in result.metadata_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual([row["arxiv_id"] for row in rows], ["2610.55555"])
+
+    def test_empty_rerun_preserves_existing_daily_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = make_config(root)
+            first = run_pipeline(
+                config,
+                date(2026, 10, 28),
+                fixture=FIXTURE,
+                no_download=True,
+            )
+            before = first.metadata_path.read_text(encoding="utf-8")
+
+            with patch("arxiv_scraper.pipeline.load_feed", return_value=[]):
+                rerun = run_pipeline(
+                    replace(config, api_backfill_days=0),
+                    date(2026, 10, 28),
+                    no_download=True,
+                )
+
+            self.assertEqual(rerun.fetched, 0)
+            self.assertEqual(rerun.metadata_path.read_text(encoding="utf-8"), before)
+            self.assertIn(
+                "Smith_2026_arXiv-2610.12345v1.pdf",
+                rerun.index_path.read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":

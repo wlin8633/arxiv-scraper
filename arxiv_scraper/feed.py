@@ -4,8 +4,10 @@ import logging
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 
 from .models import Paper
@@ -14,6 +16,7 @@ from .models import Paper
 LOGGER = logging.getLogger(__name__)
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
+OPENSEARCH = "{http://a9.com/-/spec/opensearch/1.1/}"
 ARXIV_ID_RE = re.compile(
     r"(?P<base>\d{4}\.\d{4,5}|[A-Za-z.-]+/\d{7})(?:v(?P<version>\d+))?"
 )
@@ -63,6 +66,29 @@ def feed_url(categories: tuple[str, ...]) -> str:
     if not categories:
         raise ValueError("At least one arXiv category is required")
     return "https://rss.arxiv.org/atom/" + "+".join(categories)
+
+
+def api_query_url(
+    category: str,
+    start_date: date,
+    end_date: date,
+    start: int,
+    max_results: int,
+) -> str:
+    query = (
+        f"cat:{category} AND "
+        f"lastUpdatedDate:[{start_date:%Y%m%d}0000 TO {end_date:%Y%m%d}2359]"
+    )
+    parameters = urllib.parse.urlencode(
+        {
+            "search_query": query,
+            "start": start,
+            "max_results": max_results,
+            "sortBy": "lastUpdatedDate",
+            "sortOrder": "descending",
+        }
+    )
+    return "https://export.arxiv.org/api/query?" + parameters
 
 
 def _text(parent: ET.Element, tag: str) -> str:
@@ -130,6 +156,14 @@ def parse_atom(data: bytes) -> list[Paper]:
     return papers
 
 
+def _total_results(data: bytes) -> int:
+    root = ET.fromstring(data)
+    value = root.findtext(f"{OPENSEARCH}totalResults")
+    if value is None:
+        return len(root.findall(f"{ATOM}entry"))
+    return int(value)
+
+
 def load_feed(client: ThrottledClient, categories: tuple[str, ...], fixture: Path | None) -> list[Paper]:
     if fixture:
         LOGGER.info("Reading feed fixture: %s", fixture)
@@ -139,3 +173,58 @@ def load_feed(client: ThrottledClient, categories: tuple[str, ...], fixture: Pat
         LOGGER.info("Fetching arXiv feed: %s", url)
         data = client.read_bytes(url)
     return parse_atom(data)
+
+
+def load_api_backfill(
+    client: ThrottledClient,
+    categories: tuple[str, ...],
+    start_date: date,
+    end_date: date,
+    page_size: int,
+    max_results_per_category: int,
+) -> list[Paper]:
+    if page_size <= 0:
+        raise ValueError("API page size must be positive")
+    if max_results_per_category <= 0:
+        return []
+
+    unique: dict[tuple[str, int], Paper] = {}
+    for category in categories:
+        offset = 0
+        total = 0
+        while offset < max_results_per_category:
+            request_size = min(page_size, max_results_per_category - offset)
+            url = api_query_url(
+                category,
+                start_date,
+                end_date,
+                offset,
+                request_size,
+            )
+            LOGGER.info(
+                "Fetching arXiv API backfill: category=%s start=%s max_results=%s",
+                category,
+                offset,
+                request_size,
+            )
+            data = client.read_bytes(url)
+            batch = parse_atom(data)
+            total = _total_results(data)
+            for paper in batch:
+                unique.setdefault((paper.arxiv_id, paper.version), paper)
+
+            if not batch:
+                break
+            offset += len(batch)
+            if offset >= total:
+                break
+
+        if total > max_results_per_category:
+            LOGGER.warning(
+                "arXiv API backfill for %s was capped at %s of %s results",
+                category,
+                max_results_per_category,
+                total,
+            )
+
+    return list(unique.values())

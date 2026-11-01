@@ -32,6 +32,9 @@ class Config:
     request_retries: int
     user_agent: str
     author_overrides: dict[str, str]
+    api_backfill_days: int = 7
+    api_page_size: int = 100
+    api_max_results_per_category: int = 500
 
 
 def _expand_path(value: str) -> Path:
@@ -80,4 +83,9 @@ def load_config(path: Path) -> Config:
             str(key): str(value)
             for key, value in data.get("author_overrides", {}).items()
         },
+        api_backfill_days=int(general.get("api_backfill_days", 7)),
+        api_page_size=int(general.get("api_page_size", 100)),
+        api_max_results_per_category=int(
+            general.get("api_max_results_per_category", 500)
+        ),
     )

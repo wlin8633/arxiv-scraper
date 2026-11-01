@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from .config import Config
 from .download import download_pdf
-from .feed import ThrottledClient, load_feed
+from .feed import ThrottledClient, load_api_backfill, load_feed
 from .models import Paper
 from .naming import author_token, initial_year, suggested_filename
 from .output import (
@@ -57,6 +58,31 @@ def _paper_paths(config: Config, paper: Paper) -> tuple[Path, Path]:
     return pdf_path, pdf_path.with_suffix(".json")
 
 
+def _unique_versions(papers: list[Paper]) -> list[Paper]:
+    unique: dict[tuple[str, int], Paper] = {}
+    for paper in papers:
+        unique[(paper.arxiv_id, paper.version)] = paper
+    return list(unique.values())
+
+
+def _read_existing_metadata(path: Path) -> list[Paper]:
+    if not path.exists():
+        return []
+    papers: list[Paper] = []
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        try:
+            papers.append(Paper(**json.loads(line)))
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"Cannot merge invalid metadata row {line_number} in {path}"
+            ) from exc
+    return papers
+
+
 def run_pipeline(
     config: Config,
     run_date: date,
@@ -80,7 +106,38 @@ def run_pipeline(
     failed = 0
     papers: list[Paper] = []
     try:
-        papers = load_feed(client, config.categories, fixture)
+        rss_papers = _unique_versions(load_feed(client, config.categories, fixture))
+        papers = list(rss_papers)
+        api_candidates: list[Paper] = []
+        if fixture is None and config.api_backfill_days > 0:
+            lookback_start = run_date - timedelta(
+                days=max(config.api_backfill_days - 1, 0)
+            )
+            api_candidates = load_api_backfill(
+                client,
+                config.categories,
+                lookback_start,
+                run_date,
+                config.api_page_size,
+                config.api_max_results_per_category,
+            )
+            rss_keys = {
+                (paper.arxiv_id, paper.version) for paper in rss_papers
+            }
+            papers.extend(
+                paper
+                for paper in api_candidates
+                if (paper.arxiv_id, paper.version) not in rss_keys
+                and not database.has_version(paper.arxiv_id, paper.version)
+            )
+            papers = _unique_versions(papers)
+            LOGGER.info(
+                "Source reconciliation: rss=%s api_candidates=%s to_process=%s",
+                len(rss_papers),
+                len(api_candidates),
+                len(papers),
+            )
+
         for paper in papers:
             _prepare_paper(paper, config, database)
             pdf_path, sidecar_path = _paper_paths(config, paper)
@@ -115,8 +172,17 @@ def run_pipeline(
 
         papers.sort(key=lambda item: (-item.score, item.title.casefold()))
         indexed = [paper for paper in papers if paper.score >= config.index_threshold]
-        write_jsonl(metadata_path, papers)
-        atomic_text(index_path, render_index(run_date, indexed, len(papers)))
+
+        combined = _unique_versions(_read_existing_metadata(metadata_path) + papers)
+        combined.sort(key=lambda item: (-item.score, item.title.casefold()))
+        combined_indexed = [
+            paper for paper in combined if paper.score >= config.index_threshold
+        ]
+        write_jsonl(metadata_path, combined)
+        atomic_text(
+            index_path,
+            render_index(run_date, combined_indexed, len(combined)),
+        )
         database.finish_run(run_id, len(papers), len(indexed), downloaded, failed)
         return PipelineResult(
             fetched=len(papers),

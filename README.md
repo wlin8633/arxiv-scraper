@@ -1,15 +1,17 @@
 # arxiv-scraper
 
 A small, dependency-free Python pipeline for building a personal arXiv reading
-list. It reads official daily Atom feeds, scores papers against configurable
-research interests, stores metadata in SQLite and JSONL, and downloads only
-high-scoring PDFs to a mounted cloud directory.
+list. It reads official daily Atom feeds, reconciles them against a rolling
+arXiv Search API window, scores papers against configurable research interests,
+stores metadata in SQLite and JSONL, and downloads only high-scoring PDFs to a
+mounted cloud directory.
 
 ## Features
 
 - configurable arXiv categories, keyword rules, weights, and thresholds;
 - daily Markdown index plus complete JSONL metadata;
 - SQLite-backed deduplication, version tracking, and run history;
+- rolling Search API backfill for delayed or temporarily incomplete Atom feeds;
 - validated PDF downloads with SHA-256 sidecar metadata;
 - stable, searchable filenames such as
   `Smith_2026_arXiv-2610.12345v1.pdf`;
@@ -42,7 +44,13 @@ Edit `config.toml`, especially:
 - `output_root` and `mount_root`;
 - `timezone`;
 - `user_agent` with your contact information;
+- `api_backfill_days` and API pagination limits;
 - categories, rules, and score thresholds.
+
+The default seven-day backfill queries `lastUpdatedDate` once per configured
+category. SQLite filters out versions already seen through RSS or an earlier
+backfill. Set `api_backfill_days = 0` only when intentionally disabling this
+reconciliation step.
 
 Run the offline tests:
 
@@ -146,7 +154,9 @@ sudo loginctl enable-linger "$USER"
   `require_mount = true`.
 - Downloads use a `.part` file and are renamed only after PDF validation.
 - A process lock prevents overlapping runs.
-- Re-running the same feed is idempotent.
+- API backfill results are deduplicated by arXiv ID and version.
+- Re-running an existing report date merges metadata instead of replacing it
+  with an empty feed.
 
 If a scheduled run fails, check the cloud mount and then inspect:
 
@@ -157,7 +167,9 @@ journalctl --user-unit=arxiv-scraper.service -n 100 --no-pager
 ## arXiv usage
 
 The client uses one connection and waits at least three seconds between arXiv
-requests. Review the current [arXiv API Terms of Use](https://info.arxiv.org/help/api/tou.html)
+requests. Backfill therefore makes one or more sequential requests per category
+and takes longer than a single-feed run. Review the current
+[arXiv API Terms of Use](https://info.arxiv.org/help/api/tou.html)
 before changing request behavior or redistributing downloaded content. PDFs are
 intended for personal or research use; metadata and links are safer to share
 than copied full text.
